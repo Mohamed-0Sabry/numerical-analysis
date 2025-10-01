@@ -32,26 +32,18 @@ interface MethodResult {
 }
 
 const METHOD_INFO: Record<Method, { name: string; description: string }> = {
-  bisection: {
-    name: "Bisection Method",
-    description: "Bracketing method that repeatedly bisects an interval",
-  },
-  "false-position": {
-    name: "False Position",
-    description: "Regula Falsi - linear interpolation bracketing method",
-  },
-  "fixed-point": {
-    name: "Fixed-Point Iteration",
-    description: "Open method solving x = g(x)",
-  },
-  newton: {
-    name: "Newton-Raphson",
-    description: "Open method using tangent lines (requires derivative)",
-  },
-  secant: {
-    name: "Secant Method",
-    description: "Open method approximating derivative with finite differences",
-  },
+  bisection: { name: "Bisection Method", description: "Bracketing method that repeatedly bisects an interval" },
+  "false-position": { name: "False Position", description: "Regula Falsi - linear interpolation bracketing method" },
+  "fixed-point": { name: "Fixed-Point Iteration - still in development", description: "Open method solving x = g(x)" },
+  // newton: { name: "Newton-Raphson", description: "Open method using tangent lines (requires derivative)" },
+  // secant: { name: "Secant Method", description: "Open method approximating derivative with finite differences" },
+}
+
+const formatVal = (val: any) => {
+  if (val === null || val === undefined || isNaN(val)) return "-"
+  if (typeof val !== "number") return String(val)
+  if (Math.abs(val - Math.round(val)) < 1e-9) return Math.round(val)
+  return parseFloat(val.toFixed(6))
 }
 
 export default function Home() {
@@ -70,52 +62,28 @@ export default function Home() {
   const run = useCallback((): void => {
     setIsRunning(true)
     const options = { tol: Number(tol), maxIter: Number(maxIter) }
-
     setTimeout(() => {
       try {
         let res: MethodResult
-
         switch (method) {
-          case "bisection":
-            res = solveBisection(expr, Number(a), Number(b), options)
-            break
-          case "false-position":
-            res = solveFalsePosition(expr, Number(a), Number(b), options)
-            break
-          case "fixed-point":
-            res = solveFixedPoint(gexpr, Number(x0), options)
-            break
-          case "newton":
-            res = solveNewton(expr, Number(x0), options)
-            break
-          case "secant":
-            res = solveSecant(expr, Number(x0), Number(x1), options)
-            break
-          default:
-            throw new Error("Unknown method")
+          case "bisection": res = solveBisection(expr, Number(a), Number(b), options); break
+          case "false-position": res = solveFalsePosition(expr, Number(a), Number(b), options); break
+          case "fixed-point": res = solveFixedPoint(gexpr, Number(x0), options); break
+          case "newton": res = solveNewton(expr, Number(x0), options); break
+          case "secant": res = solveSecant(expr, Number(x0), Number(x1), options); break
+          default: throw new Error("Unknown method")
         }
-
         setResult(res)
       } catch (err: any) {
-        setResult({
-          iterations: [],
-          summary: { root: 0, iterations: 0, converged: false },
-          error: err.message,
-        })
+        setResult({ iterations: [], summary: { root: 0, iterations: 0, converged: false }, error: err.message })
       } finally {
         setIsRunning(false)
       }
     }, 100)
   }, [method, expr, gexpr, a, b, x0, x1, tol, maxIter])
 
-  const reset = useCallback((): void => {
-    setResult(null)
-  }, [])
-
-  const handleMethodChange = useCallback((val: Method) => {
-    setMethod(val)
-    setResult(null)
-  }, [])
+  const reset = useCallback(() => setResult(null), [])
+  const handleMethodChange = useCallback((val: Method) => { setMethod(val); setResult(null) }, [])
 
   const renderInputFields = () => {
     const requiresBracket = method === "bisection" || method === "false-position"
@@ -128,116 +96,44 @@ export default function Home() {
         {!requiresGFunction && (
           <div className="space-y-2">
             <Label htmlFor="expr">Function f(x)</Label>
-            <Input
-              id="expr"
-              value={expr}
-              onChange={(e) => setExpr(e.target.value)}
-              placeholder="e.g., x^3 - x - 2"
-              className="font-mono text-sm"
-            />
+            <Input id="expr" value={expr} onChange={(e) => setExpr(e.target.value)} placeholder="e.g., x^3 - x - 2" className="font-mono text-sm" />
           </div>
         )}
-
         <AnimatePresence mode="wait">
           {requiresGFunction && (
-            <motion.div
-              key="gfunction"
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: "auto" }}
-              exit={{ opacity: 0, height: 0 }}
-              className="space-y-2"
-            >
+            <motion.div key="gfunction" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="space-y-2">
               <Label htmlFor="gexpr">Function g(x)</Label>
-              <Input
-                id="gexpr"
-                value={gexpr}
-                onChange={(e) => setGexpr(e.target.value)}
-                placeholder="e.g., (x + 2)^(1/3)"
-                className="font-mono text-sm"
-              />
-              <p className="text-xs text-muted-foreground">
-                Rearrange f(x) = 0 to x = g(x) form
-              </p>
+              <Input id="gexpr" value={gexpr} onChange={(e) => setGexpr(e.target.value)} placeholder="e.g., (x + 2)^(1/3)" className="font-mono text-sm" />
+              <p className="text-xs text-muted-foreground">Rearrange f(x) = 0 to x = g(x) form</p>
             </motion.div>
           )}
-
           {requiresBracket && (
-            <motion.div
-              key="bracket"
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: "auto" }}
-              exit={{ opacity: 0, height: 0 }}
-              className="grid grid-cols-2 gap-3"
-            >
+            <motion.div key="bracket" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-2">
                 <Label htmlFor="a">Lower Bound (a)</Label>
-                <Input
-                  id="a"
-                  value={a}
-                  onChange={(e) => setA(e.target.value)}
-                  placeholder="a"
-                  className="font-mono text-sm"
-                />
+                <Input id="a" value={a} onChange={(e) => setA(e.target.value)} placeholder="a" className="font-mono text-sm" />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="b">Upper Bound (b)</Label>
-                <Input
-                  id="b"
-                  value={b}
-                  onChange={(e) => setB(e.target.value)}
-                  placeholder="b"
-                  className="font-mono text-sm"
-                />
+                <Input id="b" value={b} onChange={(e) => setB(e.target.value)} placeholder="b" className="font-mono text-sm" />
               </div>
             </motion.div>
           )}
-
           {requiresInitialGuess && (
-            <motion.div
-              key="initial-guess"
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: "auto" }}
-              exit={{ opacity: 0, height: 0 }}
-              className="space-y-2"
-            >
+            <motion.div key="initial-guess" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="space-y-2">
               <Label htmlFor="x0">Initial Guess (x₀)</Label>
-              <Input
-                id="x0"
-                value={x0}
-                onChange={(e) => setX0(e.target.value)}
-                placeholder="x₀"
-                className="font-mono text-sm"
-              />
+              <Input id="x0" value={x0} onChange={(e) => setX0(e.target.value)} placeholder="x₀" className="font-mono text-sm" />
             </motion.div>
           )}
-
           {requiresTwoGuesses && (
-            <motion.div
-              key="two-guesses"
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: "auto" }}
-              exit={{ opacity: 0, height: 0 }}
-              className="grid grid-cols-2 gap-3"
-            >
+            <motion.div key="two-guesses" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-2">
                 <Label htmlFor="x0-secant">First Guess (x₀)</Label>
-                <Input
-                  id="x0-secant"
-                  value={x0}
-                  onChange={(e) => setX0(e.target.value)}
-                  placeholder="x₀"
-                  className="font-mono text-sm"
-                />
+                <Input id="x0-secant" value={x0} onChange={(e) => setX0(e.target.value)} placeholder="x₀" className="font-mono text-sm" />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="x1">Second Guess (x₁)</Label>
-                <Input
-                  id="x1"
-                  value={x1}
-                  onChange={(e) => setX1(e.target.value)}
-                  placeholder="x₁"
-                  className="font-mono text-sm"
-                />
+                <Input id="x1" value={x1} onChange={(e) => setX1(e.target.value)} placeholder="x₁" className="font-mono text-sm" />
               </div>
             </motion.div>
           )}
@@ -256,100 +152,68 @@ export default function Home() {
               <Calculator className="w-6 h-6 text-primary-foreground" />
             </div>
             <div>
-              <h1 className="text-xl font-bold text-foreground">Numerical Analysis</h1>
-              <p className="text-sm text-muted-foreground">Root Finding Methods Visualizer</p>
+              <h1 className="text-lg md:text-xl font-bold text-foreground">Numerical Analysis</h1>
+              <p className="text-xs md:text-sm text-muted-foreground">Root Finding Methods Visualizer</p>
             </div>
           </div>
         </div>
       </header>
 
-      <div className="container mx-auto px-4 py-8">
+      <div className="container mx-auto px-4 py-6 md:py-8">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* Left Panel - Controls */}
-          <motion.div
-            className="lg:col-span-4"
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.5 }}
-          >
-            <Card className="sticky top-24">
-              <CardHeader>
-                <CardTitle className="text-lg">Configuration</CardTitle>
-              </CardHeader>
+          {/* Left Panel */}
+          <motion.div className="lg:col-span-4" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.5 }}>
+            <Card className="lg:sticky lg:top-24">
+              <CardHeader><CardTitle className="text-lg">Configuration</CardTitle></CardHeader>
               <CardContent className="space-y-5">
                 {/* Method Selection */}
                 <div className="space-y-2">
                   <Label htmlFor="method">Method</Label>
                   <Select value={method} onValueChange={handleMethodChange}>
-                    <SelectTrigger id="method">
-                      <SelectValue placeholder="Select method" />
-                    </SelectTrigger>
+                    <SelectTrigger id="method"><SelectValue placeholder="Select method" /></SelectTrigger>
                     <SelectContent>
                       {Object.entries(METHOD_INFO).map(([key, info]) => (
-                        <SelectItem key={key} value={key}>
-                          {info.name}
-                        </SelectItem>
+                        <SelectItem key={key} value={key}>{info.name}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
-                  <p className="text-xs text-muted-foreground">
-                    {METHOD_INFO[method].description}
-                  </p>
+                  <p className="text-xs text-muted-foreground">{METHOD_INFO[method].description}</p>
                 </div>
 
-                {/* Dynamic Input Fields */}
                 {renderInputFields()}
 
-                {/* Convergence Parameters */}
-                <div className="grid grid-cols-2 gap-3">
+                {/* Convergence Params */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="space-y-2">
                     <Label htmlFor="tol">Tolerance</Label>
-                    <Input
-                      id="tol"
-                      value={tol}
-                      onChange={(e) => setTol(e.target.value)}
-                      placeholder="1e-6"
-                      className="font-mono text-sm"
-                    />
+                    <Input id="tol" value={tol} onChange={(e) => setTol(e.target.value)} placeholder="1e-6" className="font-mono text-sm" />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="maxIter">Max Iterations</Label>
-                    <Input
-                      id="maxIter"
-                      value={maxIter}
-                      onChange={(e) => setMaxIter(e.target.value)}
-                      placeholder="50"
-                      className="font-mono text-sm"
-                    />
+                    <Input id="maxIter" value={maxIter} onChange={(e) => setMaxIter(e.target.value)} placeholder="50" className="font-mono text-sm" />
                   </div>
                 </div>
 
-                {/* Action Buttons */}
-                <div className="flex gap-2 pt-2">
-                  <Button onClick={run} disabled={isRunning} className="flex-1" size="lg">
+                {/* Buttons */}
+                <div className="flex flex-col sm:flex-row gap-2 pt-2">
+                  <Button onClick={run} disabled={isRunning} className="flex-1" size="default">
                     <Play className="w-4 h-4 mr-2" />
                     {isRunning ? "Running..." : "Run Method"}
                   </Button>
                   {result && (
-                    <Button onClick={reset} variant="outline" size="lg">
+                    <Button onClick={reset} variant="outline" size="default" className="flex-1 sm:flex-none">
                       <RotateCcw className="w-4 h-4" />
                     </Button>
                   )}
                 </div>
 
-                {/* Error Display */}
+                {/* Error */}
                 <AnimatePresence>
                   {result?.error && (
-                    <motion.div
-                      initial={{ opacity: 0, y: -10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -10 }}
-                    >
+                    <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}>
                       <Alert variant="destructive">
                         <AlertCircle className="h-4 w-4" />
-                        <AlertDescription className="text-sm">
-                          {result.error}
-                        </AlertDescription>
+                        <AlertDescription className="text-sm">{result.error}</AlertDescription>
                       </Alert>
                     </motion.div>
                   )}
@@ -358,32 +222,19 @@ export default function Home() {
                 {/* Results Summary */}
                 <AnimatePresence>
                   {result && !result.error && (
-                    <motion.div
-                      initial={{ opacity: 0, y: -10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -10 }}
-                      className="p-4 rounded-lg bg-primary/10 border border-primary/20 space-y-3"
-                    >
+                    <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="p-4 rounded-lg bg-primary/10 border border-primary/20 space-y-3">
                       <div className="space-y-2">
                         <div className="flex justify-between items-center">
-                          <span className="text-sm font-medium text-muted-foreground">
-                            Root Found:
-                          </span>
-                          <span className="text-lg font-bold font-mono text-primary">
-                            {result.summary.root.toFixed(8)}
-                          </span>
+                          <span className="text-sm font-medium text-muted-foreground">Root Found:</span>
+                          <span className="text-base md:text-lg font-bold font-mono text-primary">{formatVal(result.summary.root)}</span>
                         </div>
                         <div className="flex justify-between items-center">
-                          <span className="text-sm font-medium text-muted-foreground">
-                            Iterations:
-                          </span>
-                          <span className="text-sm font-mono">{result.summary.iterations}</span>
+                          <span className="text-sm font-medium text-muted-foreground">Iterations:</span>
+                          <span className="text-sm font-mono">{formatVal(result.summary.iterations)}</span>
                         </div>
                         <div className="flex justify-between items-center">
-                          <span className="text-sm font-medium text-muted-foreground">
-                            Converged:
-                          </span>
-                          <span className={`text-sm font-semibold ${result.summary.converged ? 'text-green-600' : 'text-orange-600'}`}>
+                          <span className="text-sm font-medium text-muted-foreground">Converged:</span>
+                          <span className={`text-sm font-semibold ${result.summary.converged ? "text-green-600" : "text-orange-600"}`}>
                             {result.summary.converged ? "Yes" : "No"}
                           </span>
                         </div>
@@ -395,52 +246,30 @@ export default function Home() {
             </Card>
           </motion.div>
 
-          {/* Right Panel - Visualization */}
-          <motion.div
-            className="lg:col-span-8 space-y-6"
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.5, delay: 0.1 }}
-          >
+          {/* Right Panel */}
+          <motion.div className="lg:col-span-8 space-y-6" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.5, delay: 0.1 }}>
             <MethodVisualizer expr={expr} method={method} data={result} />
 
-            {/* Iteration Details Table */}
+            {/* Iteration Table */}
             {result && !result.error && result.iterations.length > 0 && (
               <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg">Iteration Details</CardTitle>
-                </CardHeader>
+                <CardHeader><CardTitle className="text-lg">Iteration Details</CardTitle></CardHeader>
                 <CardContent>
-                  <div className="overflow-auto max-h-96 rounded-lg border">
-                    <table className="w-full text-sm">
+                  <div className="overflow-x-auto max-h-[28rem] rounded-lg border">
+                    <table className="w-full text-xs sm:text-sm">
                       <thead className="bg-muted/50 sticky top-0">
                         <tr>
                           {Object.keys(result.iterations[0] || {}).map((k) => (
-                            <th
-                              key={k}
-                              className="p-3 text-left font-medium text-muted-foreground uppercase text-xs tracking-wide"
-                            >
-                              {k}
-                            </th>
+                            <th key={k} className="p-2 md:p-3 text-left font-medium text-muted-foreground uppercase text-[10px] sm:text-xs tracking-wide">{k}</th>
                           ))}
                         </tr>
                       </thead>
                       <tbody>
                         <AnimatePresence>
                           {result.iterations.map((it: any, i: number) => (
-                            <motion.tr
-                              key={i}
-                              initial={{ opacity: 0, x: -10 }}
-                              animate={{ opacity: 1, x: 0 }}
-                              transition={{ delay: i * 0.02 }}
-                              className="border-b last:border-0 hover:bg-muted/30 transition-colors"
-                            >
+                            <motion.tr key={i} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.02 }} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
                               {Object.values(it).map((v: any, j: number) => (
-                                <td key={j} className="p-3 font-mono text-xs">
-                                  {typeof v === "number"
-                                    ? v.toExponential(6)
-                                    : String(v)}
-                                </td>
+                                <td key={j} className="p-2 md:p-3 font-mono text-[10px] sm:text-xs">{formatVal(v)}</td>
                               ))}
                             </motion.tr>
                           ))}

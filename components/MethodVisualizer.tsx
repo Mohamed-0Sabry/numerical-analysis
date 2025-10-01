@@ -20,7 +20,7 @@ export default function MethodVisualizer({ expr, method, data }: VisualizerProps
   const [step, setStep] = useState(0)
   const [speed, setSpeed] = useState(600)
   const playerRef = useRef<NodeJS.Timeout | null>(null)
-  const svgRef = useRef<SVGSVGElement>(null)
+  const svgRef = useRef<SVGSVGElement | null>(null)
 
   const iterations = data?.iterations ?? []
   const samples = data?.summary?.samples ?? []
@@ -35,22 +35,48 @@ export default function MethodVisualizer({ expr, method, data }: VisualizerProps
   const plotWidth = width - padding.left - padding.right
   const plotHeight = height - padding.top - padding.bottom
 
-  // Scaling functions
-  const xScale = (x: number) => padding.left + ((x - xRange[0]) / (xRange[1] - xRange[0])) * plotWidth
-  const yScale = (y: number) => padding.top + plotHeight - ((y - yMin) / (yMax - yMin)) * plotHeight
+  // Interaction state: pan in pixels, scale per-axis
+  const [pan, setPan] = useState({ x: 0, y: 0 })
+  const [scale, setScale] = useState({ x: 1, y: 1 })
+
+  // pointer / gesture refs
+  const draggingRef = useRef(false)
+  const lastPointerRef = useRef<{ x: number; y: number; dist?: number } | null>(null)
+  const pointersRef = useRef<Map<number, { x: number; y: number }>>(new Map())
+
+  // convert data x/y -> screen px (respecting pan & scale)
+  const xScale = (x: number) => {
+    const norm = (x - xRange[0]) / (xRange[1] - xRange[0])
+    return padding.left + (norm * plotWidth) * scale.x + pan.x
+  }
+  const yScale = (y: number) => {
+    const norm = (y - yMin) / (yMax - yMin)
+    // y axis in SVG grows downwards, so invert
+    return padding.top + plotHeight - (norm * plotHeight) * scale.y + pan.y
+  }
+
+  // Inverse conversions (screen px -> data value) useful for zooming around cursor
+  const screenToDataX = (screenX: number) => {
+    const local = (screenX - padding.left - pan.x) / (plotWidth * scale.x)
+    return xRange[0] + local * (xRange[1] - xRange[0])
+  }
+  const screenToDataY = (screenY: number) => {
+    const local = (padding.top + plotHeight - screenY + pan.y) / (plotHeight * scale.y)
+    return yMin + local * (yMax - yMin)
+  }
 
   // Generate path data for function curve
   const pathData = useMemo(() => {
     if (!samples.length) return ""
-    
+
     let path = ""
     let inSegment = false
-    
-    samples.forEach((s: any, i: number) => {
+
+    samples.forEach((s: any) => {
       if (Number.isFinite(s.y)) {
         const x = xScale(s.x)
         const y = yScale(s.y)
-        
+
         if (!inSegment) {
           path += `M ${x} ${y} `
           inSegment = true
@@ -61,9 +87,9 @@ export default function MethodVisualizer({ expr, method, data }: VisualizerProps
         inSegment = false
       }
     })
-    
+
     return path
-  }, [samples, xRange, yMin, yMax])
+  }, [samples, scale, pan, xRange, yMin, yMax])
 
   // Animation control
   useEffect(() => {
@@ -74,16 +100,16 @@ export default function MethodVisualizer({ expr, method, data }: VisualizerProps
       }
       return
     }
-    
+
     if (step >= iterations.length) {
       setPlaying(false)
       return
     }
-    
+
     playerRef.current = setTimeout(() => {
       setStep((s) => Math.min(s + 1, iterations.length))
     }, speed)
-    
+
     return () => {
       if (playerRef.current) {
         clearTimeout(playerRef.current)
@@ -96,6 +122,9 @@ export default function MethodVisualizer({ expr, method, data }: VisualizerProps
   useEffect(() => {
     setPlaying(false)
     setStep(0)
+    // reset view as well
+    setPan({ x: 0, y: 0 })
+    setScale({ x: 1, y: 1 })
   }, [data, method])
 
   const visibleIters = iterations.slice(0, step)
@@ -132,6 +161,144 @@ export default function MethodVisualizer({ expr, method, data }: VisualizerProps
     setStep(0)
   }
 
+  // View reset
+  const resetView = () => {
+    setPan({ x: 0, y: 0 })
+    setScale({ x: 1, y: 1 })
+  }
+
+  // Pointer handlers for pan & pinch
+  useEffect(() => {
+    const svg = svgRef.current
+    if (!svg) return
+
+    const getPoint = (evt: PointerEvent) => {
+      const rect = svg.getBoundingClientRect()
+      return { x: evt.clientX - rect.left, y: evt.clientY - rect.top }
+    }
+
+    const onPointerDown = (evt: PointerEvent) => {
+      (evt.target as Element).setPointerCapture(evt.pointerId)
+      pointersRef.current.set(evt.pointerId, getPoint(evt))
+      if (pointersRef.current.size === 1) {
+        // start dragging
+        draggingRef.current = true
+        lastPointerRef.current = getPoint(evt)
+      }
+    }
+
+    const onPointerMove = (evt: PointerEvent) => {
+      if (!pointersRef.current.has(evt.pointerId)) return
+      pointersRef.current.set(evt.pointerId, getPoint(evt))
+
+      if (pointersRef.current.size === 1 && draggingRef.current && lastPointerRef.current) {
+        // pan
+        const cur = getPoint(evt)
+        const dx = cur.x - lastPointerRef.current.x
+        const dy = cur.y - lastPointerRef.current.y
+        setPan((p) => ({ x: p.x + dx, y: p.y + dy }))
+        lastPointerRef.current = cur
+      } else if (pointersRef.current.size === 2) {
+        // pinch-to-zoom
+        const pts = Array.from(pointersRef.current.values())
+        const [p1, p2] = pts
+        const mid = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 }
+
+        // compute current distance
+        const dx = p2.x - p1.x
+        const dy = p2.y - p1.y
+        const dist = Math.hypot(dx, dy)
+
+        // store previous distance in lastPointerRef.x as a cheap storage
+        const prev = (lastPointerRef.current as any)?.dist ?? dist
+        const factor = dist / prev
+
+        // zoom both axes by factor, around mid
+        // update scales and pan so the data under mid remains fixed
+        const beforeDataX = screenToDataX(mid.x)
+        const beforeDataY = screenToDataY(mid.y)
+
+        setScale((s) => ({ x: s.x * factor, y: s.y * factor }))
+
+        // after changing scale, compute new screen positions for the same data
+        const afterScreenX = xScale(beforeDataX)
+        const afterScreenY = yScale(beforeDataY)
+
+        // adjust pan so mid point remains at same screen position
+        setPan((p) => ({ x: p.x + (mid.x - afterScreenX), y: p.y + (mid.y - afterScreenY) }))
+
+        lastPointerRef.current = { ...mid, dist }
+      }
+    }
+
+    const onPointerUp = (evt: PointerEvent) => {
+      try { (evt.target as Element).releasePointerCapture(evt.pointerId) } catch (e) {}
+      pointersRef.current.delete(evt.pointerId)
+      if (pointersRef.current.size === 0) {
+        draggingRef.current = false
+        lastPointerRef.current = null
+      } else if (pointersRef.current.size === 1) {
+        // reinitialize last pointer for single-drag
+        const remaining = Array.from(pointersRef.current.values())[0]
+        lastPointerRef.current = remaining
+      }
+    }
+
+    svg.addEventListener("pointerdown", onPointerDown)
+    window.addEventListener("pointermove", onPointerMove)
+    window.addEventListener("pointerup", onPointerUp)
+    window.addEventListener("pointercancel", onPointerUp)
+
+    return () => {
+      svg.removeEventListener("pointerdown", onPointerDown)
+      window.removeEventListener("pointermove", onPointerMove)
+      window.removeEventListener("pointerup", onPointerUp)
+      window.removeEventListener("pointercancel", onPointerUp)
+    }
+  }, [xRange, yMin, yMax, plotWidth, plotHeight, pan, scale])
+
+  // Wheel zoom: Shift = X only, Ctrl/Meta = Y only, none = both
+  useEffect(() => {
+    const svg = svgRef.current
+    if (!svg) return
+
+    const onWheel = (evt: WheelEvent) => {
+      evt.preventDefault()
+      const rect = svg.getBoundingClientRect()
+      const mouseX = evt.clientX - rect.left
+      const mouseY = evt.clientY - rect.top
+
+      // zoom factor per wheel delta
+      const delta = -evt.deltaY
+      const zoomFactor = 1 + (delta > 0 ? 0.08 : -0.08)
+
+      const zoomX = !evt.shiftKey && !evt.ctrlKey && !evt.metaKey
+      const zoomY = !evt.shiftKey && !evt.ctrlKey && !evt.metaKey
+      // modifiers: shift -> X only, ctrl/meta -> Y only
+      const onlyX = evt.shiftKey && !evt.ctrlKey && !evt.metaKey
+      const onlyY = (evt.ctrlKey || evt.metaKey) && !evt.shiftKey
+
+      const doX = onlyX ? true : (onlyY ? false : zoomX)
+      const doY = onlyY ? true : (onlyX ? false : zoomY)
+
+      // data under cursor before
+      const beforeDataX = screenToDataX(mouseX)
+      const beforeDataY = screenToDataY(mouseY)
+
+      setScale((s) => ({ x: doX ? s.x * zoomFactor : s.x, y: doY ? s.y * zoomFactor : s.y }))
+
+      // after scale changed, compute where that data would be and adjust pan so cursor stays locked
+      requestAnimationFrame(() => {
+        const afterX = xScale(beforeDataX)
+        const afterY = yScale(beforeDataY)
+        setPan((p) => ({ x: p.x + (mouseX - afterX), y: p.y + (mouseY - afterY) }))
+      })
+    }
+
+    svg.addEventListener("wheel", onWheel, { passive: false })
+    return () => svg.removeEventListener("wheel", onWheel)
+  }, [xRange, yMin, yMax, scale, pan])
+
   if (!data || data.error) {
     return (
       <Card>
@@ -147,24 +314,27 @@ export default function MethodVisualizer({ expr, method, data }: VisualizerProps
     )
   }
 
-  // Calculate grid lines
+  // Calculate grid lines (use original data ticks, they will transform visually with pan/scale)
   const xTicks = 8
   const yTicks = 6
-  const xTickValues = Array.from({ length: xTicks }, (_, i) => 
+  const xTickValues = Array.from({ length: xTicks }, (_, i) =>
     xRange[0] + (i / (xTicks - 1)) * (xRange[1] - xRange[0])
   )
-  const yTickValues = Array.from({ length: yTicks }, (_, i) => 
+  const yTickValues = Array.from({ length: yTicks }, (_, i) =>
     yMin + (i / (yTicks - 1)) * (yMax - yMin)
   )
 
   return (
     <Card>
-      <CardHeader>
+      <CardHeader className="flex items-center justify-between gap-4">
         <CardTitle className="text-lg">Visualization</CardTitle>
+        <div className="flex items-center gap-2">
+          <Button size="sm" onClick={resetView} variant="outline">Reset View</Button>
+        </div>
       </CardHeader>
       <CardContent className="space-y-4">
         {/* Controls */}
-        <div className="flex items-center justify-between gap-4">
+        <div className="flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2">
             <Button onClick={handlePlayPause} size="sm" variant="default">
               {playing ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
@@ -178,13 +348,14 @@ export default function MethodVisualizer({ expr, method, data }: VisualizerProps
             <Button onClick={handleReset} size="sm" variant="outline">
               <RotateCcw className="w-4 h-4" />
             </Button>
-            
-            <div className="ml-4 text-sm text-muted-foreground font-mono">
-              Step: <span className="font-semibold">{step}</span> / {iterations.length}
-            </div>
+
+ 
           </div>
 
-          <div className="flex items-center gap-3 min-w-[200px]">
+          <div className="flex items-center gap-3 min-w-[360px]">
+          <div className="ml-4 text-sm text-muted-foreground font-mono">
+              Step: <span className="font-semibold">{step}</span> / {iterations.length}
+            </div>
             <span className="text-sm text-muted-foreground whitespace-nowrap">Speed:</span>
             <Slider
               value={[speed]}
@@ -204,7 +375,13 @@ export default function MethodVisualizer({ expr, method, data }: VisualizerProps
           animate={{ opacity: 1, scale: 1 }}
           className="border rounded-lg bg-white overflow-hidden"
         >
-          <svg ref={svgRef} width="100%" height={height} viewBox={`0 0 ${width} ${height}`}>
+          <svg
+            ref={svgRef}
+            width="100%"
+            height={height}
+            viewBox={`0 0 ${width} ${height}`}
+            style={{ touchAction: "none", cursor: draggingRef.current ? "grabbing" : "grab" }}
+          >
             <defs>
               <marker
                 id="arrowhead"
@@ -298,7 +475,7 @@ export default function MethodVisualizer({ expr, method, data }: VisualizerProps
               </text>
             ))}
 
-            {/* Function curve - THE MAIN FIX */}
+            {/* Function curve */}
             {pathData && (
               <path
                 d={pathData}
@@ -352,7 +529,7 @@ export default function MethodVisualizer({ expr, method, data }: VisualizerProps
                   const x2 = xRange[1]
                   const y1 = y0 + slope * (x1 - x0)
                   const y2 = y0 + slope * (x2 - x0)
-                  
+
                   return (
                     <line
                       x1={xScale(x1)}
@@ -380,12 +557,12 @@ export default function MethodVisualizer({ expr, method, data }: VisualizerProps
                   const y1 = last.fprev
                   const y2 = last.fx
                   const slope = (y2 - y1) / (x2 - x1)
-                  
+
                   const xStart = xRange[0]
                   const xEnd = xRange[1]
                   const yStart = y1 + slope * (xStart - x1)
                   const yEnd = y1 + slope * (xEnd - x1)
-                  
+
                   return (
                     <line
                       x1={xScale(xStart)}
@@ -406,7 +583,7 @@ export default function MethodVisualizer({ expr, method, data }: VisualizerProps
             {/* Iteration points */}
             {iterPoints.map((pt: any, i: number) => {
               if (!Number.isFinite(pt.x) || !Number.isFinite(pt.y)) return null
-              
+
               return (
                 <g key={i}>
                   <circle
@@ -432,6 +609,8 @@ export default function MethodVisualizer({ expr, method, data }: VisualizerProps
             })}
           </svg>
         </motion.div>
+
+        <div className="text-xs text-muted-foreground">Tips: Drag to pan. Wheel to zoom (Shift = X-only, Ctrl/Meta = Y-only). Pinch to zoom on touch.</div>
       </CardContent>
     </Card>
   )
