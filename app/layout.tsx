@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -35,6 +36,8 @@ export default function RootLayout({
         <footer className="border-t bg-card/50 backdrop-blur-sm py-4 text-center text-lg">
           © {new Date().getFullYear()} Sabry — Created with ❤️ so you can solve with ease.
         </footer>
+
+        <Analytics />
       </body>
     </html>
   );
