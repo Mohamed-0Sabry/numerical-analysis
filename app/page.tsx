@@ -18,7 +18,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Calculator, Play, RotateCcw, AlertCircle } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 
-type Method = "bisection" | "false-position" | "fixed-point" | "newton" | "secant"
+type Method = "bisection" | "false-position" | "fixed-point"
 
 interface MethodResult {
   iterations: any[]
@@ -69,8 +69,8 @@ export default function Home() {
           case "bisection": res = solveBisection(expr, Number(a), Number(b), options); break
           case "false-position": res = solveFalsePosition(expr, Number(a), Number(b), options); break
           case "fixed-point": res = solveFixedPoint(gexpr, Number(x0), options); break
-          case "newton": res = solveNewton(expr, Number(x0), options); break
-          case "secant": res = solveSecant(expr, Number(x0), Number(x1), options); break
+          // case "newton": res = solveNewton(expr, Number(x0), options); break
+          // case "secant": res = solveSecant(expr, Number(x0), Number(x1), options); break
           default: throw new Error("Unknown method")
         }
         setResult(res)
@@ -87,8 +87,12 @@ export default function Home() {
 
   const renderInputFields = () => {
     const requiresBracket = method === "bisection" || method === "false-position"
-    const requiresInitialGuess = method === "newton" || method === "fixed-point"
-    const requiresTwoGuesses = method === "secant"
+
+    // !!TODO: add support for newton and secant and remove this
+    // const requiresInitialGuess = method === "newton" || method === "fixed-point"
+    const requiresInitialGuess = method === "fixed-point"
+    // const requiresTwoGuesses = method === "secant"
+    const requiresTwoGuesses = false
     const requiresGFunction = method === "fixed-point"
 
     return (
