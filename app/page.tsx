@@ -2,6 +2,7 @@
 
 import { useState, useCallback } from "react"
 import { motion, AnimatePresence } from "framer-motion"
+import Image from "next/image"
 import MethodVisualizer from "@/components/MethodVisualizer"
 import { 
   solveBisection, 
@@ -152,9 +153,15 @@ export default function Home() {
       <header className="border-b bg-card/50 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center gap-3">
-            <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-primary">
-              <Calculator className="w-6 h-6 text-primary-foreground" />
-            </div>
+            <div className="flex items-center justify-center w-14 h-14 rounded-lg">
+              <Image 
+                src="/icon-512.png" 
+                alt="App Logo" 
+                width={100} 
+                height={100} 
+                className="object-contain"
+              />
+              </div>
             <div>
               <h1 className="text-lg md:text-xl font-bold text-foreground">Numerical Analysis</h1>
               <p className="text-xs md:text-sm text-muted-foreground">Root Finding Methods Visualizer</p>

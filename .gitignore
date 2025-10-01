@@ -12,6 +12,9 @@
 /.next/
 /out/
 
+.hintrc
+
+
 # production
 /build
 
