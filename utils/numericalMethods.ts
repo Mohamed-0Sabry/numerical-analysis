@@ -1,7 +1,32 @@
 import { compile, derivative } from "mathjs"
 
 /**
- * Helper to evaluate mathjs expression f at x with better error handling
+ * Evaluation options for numerical methods
+ */
+export interface NumericalOptions {
+  tol?: number
+  maxIter?: number
+}
+
+/**
+ * Result structure for numerical methods
+ */
+export interface NumericalResult {
+  iterations: Record<string, number>[]
+  summary: {
+    root: number
+    iterations: number
+    converged: boolean
+    plotRange: [number, number]
+    samples: Array<{ x: number; y: number }>
+    yMin: number
+    yMax: number
+    [key: string]: any
+  }
+}
+
+/**
+ * Helper to safely evaluate mathjs expression f at x with error handling
  */
 function evalf(expr: string, x: number): number {
   try {
@@ -15,10 +40,15 @@ function evalf(expr: string, x: number): number {
 }
 
 /**
- * Sample function values for plotting with adaptive sampling
+ * Sample function values for plotting with adaptive sampling and outlier handling
  */
-export function sampleFunction(expr: string, from = -5, to = 5, n = 500) {
-  const xs: Array<{ x: number; y: number }> = []
+export function sampleFunction(
+  expr: string,
+  from: number = -5,
+  to: number = 5,
+  n: number = 500
+): { samples: Array<{ x: number; y: number }>; yMin: number; yMax: number } {
+  const samples: Array<{ x: number; y: number }> = []
   let yMin = Number.POSITIVE_INFINITY
   let yMax = Number.NEGATIVE_INFINITY
 
@@ -28,16 +58,19 @@ export function sampleFunction(expr: string, from = -5, to = 5, n = 500) {
 
     // Clamp extreme values for better visualization
     if (Number.isFinite(y)) {
-      if (Math.abs(y) > 1e6) y = Math.sign(y) * 1e6
+      if (Math.abs(y) > 1e6) {
+        y = Math.sign(y) * 1e6
+      }
       if (y < yMin) yMin = y
       if (y > yMax) yMax = y
     } else {
       y = Number.NaN
     }
 
-    xs.push({ x, y })
+    samples.push({ x, y })
   }
 
+  // Handle edge cases
   if (yMin === Number.POSITIVE_INFINITY) {
     yMin = -1
     yMax = 1
@@ -47,31 +80,44 @@ export function sampleFunction(expr: string, from = -5, to = 5, n = 500) {
   }
 
   // Add padding to y-range for better visualization
-  const yPadding = (yMax - yMin) * 0.1
+  const yPadding = (yMax - yMin) * 0.15
   yMin -= yPadding
   yMax += yPadding
 
-  return { samples: xs, yMin, yMax }
+  return { samples, yMin, yMax }
 }
 
-type Options = { tol?: number; maxIter?: number }
+/**
+ * Format number for iteration display
+ */
+function formatIterationValue(value: number): number {
+  return Number(value.toFixed(10))
+}
 
 /**
- * Bisection method with enhanced iteration data
+ * Bisection method - Bracketing method that repeatedly bisects an interval
+ * Requires f(a) and f(b) to have opposite signs
  */
-export function solveBisection(expr: string, a0: number, b0: number, opts: Options = {}) {
+export function solveBisection(
+  expr: string,
+  a0: number,
+  b0: number,
+  opts: NumericalOptions = {}
+): NumericalResult {
   const tol = opts.tol ?? 1e-6
   const maxIter = opts.maxIter ?? 50
+  
   let a = a0
   let b = b0
   let fa = evalf(expr, a)
   let fb = evalf(expr, b)
 
+  // Validate initial conditions
   if (Number.isNaN(fa) || Number.isNaN(fb)) {
-    throw new Error("f(a) or f(b) is not finite")
+    throw new Error("f(a) or f(b) is not finite. Check your function and bounds.")
   }
   if (fa * fb > 0) {
-    throw new Error("f(a) and f(b) must have opposite signs")
+    throw new Error("f(a) and f(b) must have opposite signs. Choose different bounds.")
   }
 
   const iters: any[] = []
@@ -86,21 +132,25 @@ export function solveBisection(expr: string, a0: number, b0: number, opts: Optio
 
     iters.push({
       iter: k + 1,
-      a: Number(a.toFixed(10)),
-      b: Number(b.toFixed(10)),
-      mid: Number(mid.toFixed(10)),
-      fx: Number(fmid.toFixed(10)),
-      width: Number(width.toFixed(10)),
-      error: Number(error.toFixed(10)),
+      a: formatIterationValue(a),
+      b: formatIterationValue(b),
+      mid: formatIterationValue(mid),
+      fx: formatIterationValue(fmid),
+      width: formatIterationValue(width),
+      error: formatIterationValue(error),
     })
 
-    if (!Number.isFinite(fmid)) break
+    if (!Number.isFinite(fmid)) {
+      throw new Error("Function evaluation resulted in non-finite value")
+    }
 
+    // Check convergence criteria
     if (Math.abs(fmid) < tol || width / 2 < tol) {
       converged = true
       break
     }
 
+    // Update interval
     if (fa * fmid <= 0) {
       b = mid
       fb = fmid
@@ -126,21 +176,29 @@ export function solveBisection(expr: string, a0: number, b0: number, opts: Optio
 }
 
 /**
- * False position (Regula Falsi) with enhanced data
+ * False Position (Regula Falsi) - Linear interpolation bracketing method
+ * More efficient than bisection for smooth functions
  */
-export function solveFalsePosition(expr: string, a0: number, b0: number, opts: Options = {}) {
+export function solveFalsePosition(
+  expr: string,
+  a0: number,
+  b0: number,
+  opts: NumericalOptions = {}
+): NumericalResult {
   const tol = opts.tol ?? 1e-6
   const maxIter = opts.maxIter ?? 50
+  
   let a = a0
   let b = b0
   let fa = evalf(expr, a)
   let fb = evalf(expr, b)
 
+  // Validate initial conditions
   if (Number.isNaN(fa) || Number.isNaN(fb)) {
-    throw new Error("f(a) or f(b) is not finite")
+    throw new Error("f(a) or f(b) is not finite. Check your function and bounds.")
   }
   if (fa * fb > 0) {
-    throw new Error("f(a) and f(b) must have opposite signs")
+    throw new Error("f(a) and f(b) must have opposite signs. Choose different bounds.")
   }
 
   const iters: any[] = []
@@ -148,28 +206,33 @@ export function solveFalsePosition(expr: string, a0: number, b0: number, opts: O
   let converged = false
 
   for (let k = 0; k < maxIter; k++) {
+    // Linear interpolation to find root
     c = (a * fb - b * fa) / (fb - fa)
     const fc = evalf(expr, c)
     const error = Math.abs(fc)
 
     iters.push({
       iter: k + 1,
-      a: Number(a.toFixed(10)),
-      b: Number(b.toFixed(10)),
-      c: Number(c.toFixed(10)),
-      fa: Number(fa.toFixed(10)),
-      fb: Number(fb.toFixed(10)),
-      fc: Number(fc.toFixed(10)),
-      error: Number(error.toFixed(10)),
+      a: formatIterationValue(a),
+      b: formatIterationValue(b),
+      c: formatIterationValue(c),
+      fa: formatIterationValue(fa),
+      fb: formatIterationValue(fb),
+      fc: formatIterationValue(fc),
+      error: formatIterationValue(error),
     })
 
-    if (!Number.isFinite(fc)) break
+    if (!Number.isFinite(fc)) {
+      throw new Error("Function evaluation resulted in non-finite value")
+    }
 
+    // Check convergence
     if (Math.abs(fc) < tol) {
       converged = true
       break
     }
 
+    // Update interval
     if (fa * fc < 0) {
       b = c
       fb = fc
@@ -195,11 +258,18 @@ export function solveFalsePosition(expr: string, a0: number, b0: number, opts: O
 }
 
 /**
- * Fixed-point iteration for x = g(x)
+ * Fixed-Point Iteration - Solves x = g(x)
+ * Requires rearranging f(x) = 0 into the form x = g(x)
+ * Convergence depends on |g'(x)| < 1 near the root
  */
-export function solveFixedPoint(gexpr: string, x0: number, opts: Options = {}) {
+export function solveFixedPoint(
+  gexpr: string,
+  x0: number,
+  opts: NumericalOptions = {}
+): NumericalResult {
   const tol = opts.tol ?? 1e-6
   const maxIter = opts.maxIter ?? 50
+  
   const iters: any[] = []
   let x = x0
   let converged = false
@@ -210,17 +280,25 @@ export function solveFixedPoint(gexpr: string, x0: number, opts: Options = {}) {
 
     iters.push({
       iter: k + 1,
-      x: Number(x.toFixed(10)),
-      gx: Number(xnext.toFixed(10)),
-      diff: Number(diff.toFixed(10)),
+      x: formatIterationValue(x),
+      gx: formatIterationValue(xnext),
+      diff: formatIterationValue(diff),
     })
 
-    if (!Number.isFinite(xnext)) break
+    if (!Number.isFinite(xnext)) {
+      throw new Error("g(x) evaluation resulted in non-finite value")
+    }
 
+    // Check convergence
     if (diff < tol) {
       x = xnext
       converged = true
       break
+    }
+
+    // Check for divergence
+    if (Math.abs(xnext) > 1e10) {
+      throw new Error("Method is diverging. Try a different g(x) formulation or initial guess.")
     }
 
     x = xnext
@@ -241,15 +319,23 @@ export function solveFixedPoint(gexpr: string, x0: number, opts: Options = {}) {
 }
 
 /**
- * Newton-Raphson method with tangent line data
+ * Newton-Raphson Method - Uses tangent line approximation
+ * Quadratic convergence when close to root
+ * Requires derivative calculation
  */
-export function solveNewton(expr: string, x0: number, opts: Options = {}) {
+export function solveNewton(
+  expr: string,
+  x0: number,
+  opts: NumericalOptions = {}
+): NumericalResult {
   const tol = opts.tol ?? 1e-6
   const maxIter = opts.maxIter ?? 50
+  
   const iters: any[] = []
   let x = x0
   let converged = false
 
+  // Compute derivative symbolically
   const dExpr = derivative(expr, "x").toString()
 
   for (let k = 0; k < maxIter; k++) {
@@ -257,17 +343,11 @@ export function solveNewton(expr: string, x0: number, opts: Options = {}) {
     const dfx = evalf(dExpr, x)
 
     if (!Number.isFinite(fx) || !Number.isFinite(dfx)) {
-      iters.push({
-        iter: k + 1,
-        x: Number(x.toFixed(10)),
-        fx: Number(fx.toFixed(10)),
-        dfx: Number(dfx.toFixed(10)),
-      })
-      break
+      throw new Error("Function or derivative evaluation failed")
     }
 
     if (Math.abs(dfx) < 1e-12) {
-      throw new Error("Zero derivative encountered during Newton-Raphson")
+      throw new Error("Zero derivative encountered. Method cannot continue.")
     }
 
     const xnext = x - fx / dfx
@@ -276,18 +356,24 @@ export function solveNewton(expr: string, x0: number, opts: Options = {}) {
 
     iters.push({
       iter: k + 1,
-      x: Number(x.toFixed(10)),
-      fx: Number(fx.toFixed(10)),
-      dfx: Number(dfx.toFixed(10)),
-      xnext: Number(xnext.toFixed(10)),
-      error: Number(error.toFixed(10)),
-      diff: Number(diff.toFixed(10)),
+      x: formatIterationValue(x),
+      fx: formatIterationValue(fx),
+      dfx: formatIterationValue(dfx),
+      xnext: formatIterationValue(xnext),
+      error: formatIterationValue(error),
+      diff: formatIterationValue(diff),
     })
 
-    if (diff < tol) {
+    // Check convergence
+    if (diff < tol || error < tol) {
       x = xnext
       converged = true
       break
+    }
+
+    // Check for divergence
+    if (Math.abs(xnext) > 1e10) {
+      throw new Error("Method is diverging. Try a different initial guess.")
     }
 
     x = xnext
@@ -309,11 +395,19 @@ export function solveNewton(expr: string, x0: number, opts: Options = {}) {
 }
 
 /**
- * Secant method with secant line data
+ * Secant Method - Approximates derivative using finite differences
+ * Superlinear convergence (order ~1.618)
+ * Does not require symbolic derivative
  */
-export function solveSecant(expr: string, x0: number, x1: number, opts: Options = {}) {
+export function solveSecant(
+  expr: string,
+  x0: number,
+  x1: number,
+  opts: NumericalOptions = {}
+): NumericalResult {
   const tol = opts.tol ?? 1e-6
   const maxIter = opts.maxIter ?? 50
+  
   const iters: any[] = []
   let xprev = x0
   let x = x1
@@ -324,15 +418,12 @@ export function solveSecant(expr: string, x0: number, x1: number, opts: Options 
   for (let k = 0; k < maxIter; k++) {
     const denominator = fx - fprev
 
-    if (Math.abs(denominator) < 1e-12 || !Number.isFinite(fx) || !Number.isFinite(fprev)) {
-      iters.push({
-        iter: k + 1,
-        xprev: Number(xprev.toFixed(10)),
-        x: Number(x.toFixed(10)),
-        fprev: Number(fprev.toFixed(10)),
-        fx: Number(fx.toFixed(10)),
-      })
-      break
+    if (Math.abs(denominator) < 1e-12) {
+      throw new Error("Division by zero in secant method. Try different initial guesses.")
+    }
+
+    if (!Number.isFinite(fx) || !Number.isFinite(fprev)) {
+      throw new Error("Function evaluation failed")
     }
 
     const xnext = x - (fx * (x - xprev)) / denominator
@@ -341,23 +432,32 @@ export function solveSecant(expr: string, x0: number, x1: number, opts: Options 
 
     iters.push({
       iter: k + 1,
-      xprev: Number(xprev.toFixed(10)),
-      x: Number(x.toFixed(10)),
-      fprev: Number(fprev.toFixed(10)),
-      fx: Number(fx.toFixed(10)),
-      xnext: Number(xnext.toFixed(10)),
-      error: Number(error.toFixed(10)),
-      diff: Number(diff.toFixed(10)),
+      xprev: formatIterationValue(xprev),
+      x: formatIterationValue(x),
+      fprev: formatIterationValue(fprev),
+      fx: formatIterationValue(fx),
+      xnext: formatIterationValue(xnext),
+      error: formatIterationValue(error),
+      diff: formatIterationValue(diff),
     })
 
-    if (!Number.isFinite(xnext)) break
+    if (!Number.isFinite(xnext)) {
+      throw new Error("Next iteration resulted in non-finite value")
+    }
 
-    if (diff < tol) {
+    // Check convergence
+    if (diff < tol || error < tol) {
       x = xnext
       converged = true
       break
     }
 
+    // Check for divergence
+    if (Math.abs(xnext) > 1e10) {
+      throw new Error("Method is diverging. Try different initial guesses.")
+    }
+
+    // Update for next iteration
     xprev = x
     fprev = fx
     x = xnext
