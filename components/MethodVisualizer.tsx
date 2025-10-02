@@ -51,11 +51,10 @@ export default function MethodVisualizer({ expr, method, data }: VisualizerProps
   }
   const yScale = (y: number) => {
     const norm = (y - yMin) / (yMax - yMin)
-    // y axis in SVG grows downwards, so invert
     return padding.top + plotHeight - (norm * plotHeight) * scale.y + pan.y
   }
 
-  // Inverse conversions (screen px -> data value) useful for zooming around cursor
+  // Inverse conversions
   const screenToDataX = (screenX: number) => {
     const local = (screenX - padding.left - pan.x) / (plotWidth * scale.x)
     return xRange[0] + local * (xRange[1] - xRange[0])
@@ -122,7 +121,6 @@ export default function MethodVisualizer({ expr, method, data }: VisualizerProps
   useEffect(() => {
     setPlaying(false)
     setStep(0)
-    // reset view as well
     setPan({ x: 0, y: 0 })
     setScale({ x: 1, y: 1 })
   }, [data, method])
@@ -135,6 +133,10 @@ export default function MethodVisualizer({ expr, method, data }: VisualizerProps
     const y = it.fx ?? it.fc ?? (it.gx ?? 0)
     return { x, y, iter: it.iter, data: it }
   })
+
+  // For fixed-point, extract cobweb points up to current step
+  const cobwebPoints = data?.summary?.cobwebPoints ?? []
+  const visibleCobwebPoints = cobwebPoints.slice(0, Math.min((step * 2) + 1, cobwebPoints.length))
 
   // Control handlers
   const handlePlayPause = () => {
@@ -161,7 +163,6 @@ export default function MethodVisualizer({ expr, method, data }: VisualizerProps
     setStep(0)
   }
 
-  // View reset
   const resetView = () => {
     setPan({ x: 0, y: 0 })
     setScale({ x: 1, y: 1 })
@@ -181,7 +182,6 @@ export default function MethodVisualizer({ expr, method, data }: VisualizerProps
       (evt.target as Element).setPointerCapture(evt.pointerId)
       pointersRef.current.set(evt.pointerId, getPoint(evt))
       if (pointersRef.current.size === 1) {
-        // start dragging
         draggingRef.current = true
         lastPointerRef.current = getPoint(evt)
       }
@@ -192,39 +192,31 @@ export default function MethodVisualizer({ expr, method, data }: VisualizerProps
       pointersRef.current.set(evt.pointerId, getPoint(evt))
 
       if (pointersRef.current.size === 1 && draggingRef.current && lastPointerRef.current) {
-        // pan
         const cur = getPoint(evt)
         const dx = cur.x - lastPointerRef.current.x
         const dy = cur.y - lastPointerRef.current.y
         setPan((p) => ({ x: p.x + dx, y: p.y + dy }))
         lastPointerRef.current = cur
       } else if (pointersRef.current.size === 2) {
-        // pinch-to-zoom
         const pts = Array.from(pointersRef.current.values())
         const [p1, p2] = pts
         const mid = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 }
 
-        // compute current distance
         const dx = p2.x - p1.x
         const dy = p2.y - p1.y
         const dist = Math.hypot(dx, dy)
 
-        // store previous distance in lastPointerRef.x as a cheap storage
         const prev = (lastPointerRef.current as any)?.dist ?? dist
         const factor = dist / prev
 
-        // zoom both axes by factor, around mid
-        // update scales and pan so the data under mid remains fixed
         const beforeDataX = screenToDataX(mid.x)
         const beforeDataY = screenToDataY(mid.y)
 
         setScale((s) => ({ x: s.x * factor, y: s.y * factor }))
 
-        // after changing scale, compute new screen positions for the same data
         const afterScreenX = xScale(beforeDataX)
         const afterScreenY = yScale(beforeDataY)
 
-        // adjust pan so mid point remains at same screen position
         setPan((p) => ({ x: p.x + (mid.x - afterScreenX), y: p.y + (mid.y - afterScreenY) }))
 
         lastPointerRef.current = { ...mid, dist }
@@ -238,7 +230,6 @@ export default function MethodVisualizer({ expr, method, data }: VisualizerProps
         draggingRef.current = false
         lastPointerRef.current = null
       } else if (pointersRef.current.size === 1) {
-        // reinitialize last pointer for single-drag
         const remaining = Array.from(pointersRef.current.values())[0]
         lastPointerRef.current = remaining
       }
@@ -257,7 +248,7 @@ export default function MethodVisualizer({ expr, method, data }: VisualizerProps
     }
   }, [xRange, yMin, yMax, plotWidth, plotHeight, pan, scale])
 
-  // Wheel zoom: Shift = X only, Ctrl/Meta = Y only, none = both
+  // Wheel zoom
   useEffect(() => {
     const svg = svgRef.current
     if (!svg) return
@@ -268,26 +259,20 @@ export default function MethodVisualizer({ expr, method, data }: VisualizerProps
       const mouseX = evt.clientX - rect.left
       const mouseY = evt.clientY - rect.top
 
-      // zoom factor per wheel delta
       const delta = -evt.deltaY
       const zoomFactor = 1 + (delta > 0 ? 0.08 : -0.08)
 
-      const zoomX = !evt.shiftKey && !evt.ctrlKey && !evt.metaKey
-      const zoomY = !evt.shiftKey && !evt.ctrlKey && !evt.metaKey
-      // modifiers: shift -> X only, ctrl/meta -> Y only
       const onlyX = evt.shiftKey && !evt.ctrlKey && !evt.metaKey
       const onlyY = (evt.ctrlKey || evt.metaKey) && !evt.shiftKey
 
-      const doX = onlyX ? true : (onlyY ? false : zoomX)
-      const doY = onlyY ? true : (onlyX ? false : zoomY)
+      const doX = onlyX ? true : (onlyY ? false : true)
+      const doY = onlyY ? true : (onlyX ? false : true)
 
-      // data under cursor before
       const beforeDataX = screenToDataX(mouseX)
       const beforeDataY = screenToDataY(mouseY)
 
       setScale((s) => ({ x: doX ? s.x * zoomFactor : s.x, y: doY ? s.y * zoomFactor : s.y }))
 
-      // after scale changed, compute where that data would be and adjust pan so cursor stays locked
       requestAnimationFrame(() => {
         const afterX = xScale(beforeDataX)
         const afterY = yScale(beforeDataY)
@@ -314,7 +299,6 @@ export default function MethodVisualizer({ expr, method, data }: VisualizerProps
     )
   }
 
-  // Calculate grid lines (use original data ticks, they will transform visually with pan/scale)
   const xTicks = 8
   const yTicks = 6
   const xTickValues = Array.from({ length: xTicks }, (_, i) =>
@@ -326,11 +310,9 @@ export default function MethodVisualizer({ expr, method, data }: VisualizerProps
 
   return (
     <Card>
-      <CardHeader className="flex items-center justify-between gap-4">
+      <CardHeader className="flex flex-row items-center justify-between gap-4">
         <CardTitle className="text-lg">Visualization</CardTitle>
-        <div className="flex items-center gap-2">
-          <Button size="sm" onClick={resetView} variant="outline">Reset View</Button>
-        </div>
+        <Button size="sm" onClick={resetView} variant="outline">Reset View</Button>
       </CardHeader>
       <CardContent className="space-y-4">
         {/* Controls */}
@@ -348,12 +330,10 @@ export default function MethodVisualizer({ expr, method, data }: VisualizerProps
             <Button onClick={handleReset} size="sm" variant="outline">
               <RotateCcw className="w-4 h-4" />
             </Button>
-
- 
           </div>
 
           <div className="flex items-center gap-3 min-w-[360px]">
-          <div className="ml-4 text-sm text-muted-foreground font-mono">
+            <div className="ml-4 text-sm text-muted-foreground font-mono">
               Step: <span className="font-semibold">{step}</span> / {iterations.length}
             </div>
             <span className="text-sm text-muted-foreground whitespace-nowrap">Speed:</span>
@@ -392,6 +372,16 @@ export default function MethodVisualizer({ expr, method, data }: VisualizerProps
                 orient="auto"
               >
                 <polygon points="0 0, 8 3, 0 6" fill="#64748b" />
+              </marker>
+              <marker
+                id="cobweb-arrow"
+                markerWidth="8"
+                markerHeight="8"
+                refX="6"
+                refY="3"
+                orient="auto"
+              >
+                <polygon points="0 0, 8 3, 0 6" fill="#06b6d4" />
               </marker>
             </defs>
 
@@ -444,7 +434,7 @@ export default function MethodVisualizer({ expr, method, data }: VisualizerProps
               x
             </text>
             <text x={xScale(0) + 10} y={padding.top - 10} fontSize="14" fill="#475569" fontWeight="500">
-              f(x)
+              {method === "fixed-point" ? "y" : "f(x)"}
             </text>
 
             {/* Y-axis tick labels */}
@@ -485,6 +475,52 @@ export default function MethodVisualizer({ expr, method, data }: VisualizerProps
                 strokeLinecap="round"
                 strokeLinejoin="round"
               />
+            )}
+
+            {/* Fixed-Point: Draw y = x diagonal line */}
+            {method === "fixed-point" && (
+              <line
+                x1={xScale(xRange[0])}
+                y1={yScale(xRange[0])}
+                x2={xScale(xRange[1])}
+                y2={yScale(xRange[1])}
+                stroke="#9333ea"
+                strokeWidth="2"
+                strokeDasharray="6,4"
+                opacity="0.7"
+              />
+            )}
+
+            {/* Fixed-Point: Draw cobweb diagram with animated arrows */}
+            {method === "fixed-point" && visibleCobwebPoints.length > 1 && (
+              <>
+                {visibleCobwebPoints.slice(0, -1).map((pt: { x: number; y: number }, i: number) => {
+                  const nextPt = visibleCobwebPoints[i + 1]
+                  if (!Number.isFinite(pt.x) || !Number.isFinite(pt.y) || 
+                      !Number.isFinite(nextPt.x) || !Number.isFinite(nextPt.y)) {
+                    return null
+                  }
+
+                  const isHorizontal = Math.abs(pt.y - nextPt.y) < 0.0001
+                  const color = isHorizontal ? "#f97316" : "#06b6d4"
+
+                  return (
+                    <motion.line
+                      key={`cobweb-${i}`}
+                      initial={{ pathLength: 0, opacity: 0 }}
+                      animate={{ pathLength: 1, opacity: 0.8 }}
+                      transition={{ duration: 0.3, ease: "easeOut" }}
+                      x1={xScale(pt.x)}
+                      y1={yScale(pt.y)}
+                      x2={xScale(nextPt.x)}
+                      y2={yScale(nextPt.y)}
+                      stroke={color}
+                      strokeWidth="2"
+                      markerEnd={i === visibleCobwebPoints.length - 2 ? "url(#cobweb-arrow)" : undefined}
+                    />
+                  )
+                })}
+              </>
             )}
 
             {/* Method-specific visualizations */}
@@ -580,8 +616,8 @@ export default function MethodVisualizer({ expr, method, data }: VisualizerProps
               })()
             )}
 
-            {/* Iteration points */}
-            {iterPoints.map((pt: any, i: number) => {
+            {/* Iteration points (not for fixed-point) */}
+            {method !== "fixed-point" && iterPoints.map((pt: any, i: number) => {
               if (!Number.isFinite(pt.x) || !Number.isFinite(pt.y)) return null
 
               return (
@@ -607,10 +643,63 @@ export default function MethodVisualizer({ expr, method, data }: VisualizerProps
                 </g>
               )
             })}
+
+            {/* Fixed-Point iteration points (show on diagonal) */}
+            {method === "fixed-point" && visibleIters.map((it: any, i: number) => {
+              const x = it.x
+              if (!Number.isFinite(x)) return null
+
+              return (
+                <g key={`fp-point-${i}`}>
+                  <circle
+                    cx={xScale(x)}
+                    cy={yScale(x)}
+                    r="6"
+                    fill="#9333ea"
+                    stroke="#fff"
+                    strokeWidth="2"
+                  />
+                  <text
+                    x={xScale(x)}
+                    y={yScale(x) - 14}
+                    textAnchor="middle"
+                    fontSize="12"
+                    fontWeight="600"
+                    fill="#9333ea"
+                  >
+                    {it.iter}
+                  </text>
+                </g>
+              )
+            })}
           </svg>
         </motion.div>
 
-        <div className="text-xs text-muted-foreground">Tips: Drag to pan. Wheel to zoom (Shift = X-only, Ctrl/Meta = Y-only). Pinch to zoom on touch.</div>
+        {/* Legend for Fixed-Point */}
+        {method === "fixed-point" && data && (
+          <div className="flex flex-wrap gap-4 text-xs">
+            <div className="flex items-center gap-2">
+              <div className="w-4 h-0.5 bg-blue-600"></div>
+              <span className="text-muted-foreground">y = g(x)</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-4 h-0.5 bg-purple-600 border-dashed border-t-2 border-purple-600"></div>
+              <span className="text-muted-foreground">y = x</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-4 h-0.5 bg-orange-500"></div>
+              <span className="text-muted-foreground">Horizontal (to g(x))</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-4 h-0.5 bg-cyan-500"></div>
+              <span className="text-muted-foreground">Vertical (to diagonal)</span>
+            </div>
+          </div>
+        )}
+
+        <div className="text-xs text-muted-foreground">
+          Tips: Drag to pan. Wheel to zoom (Shift = X-only, Ctrl/Meta = Y-only). Pinch to zoom on touch.
+        </div>
       </CardContent>
     </Card>
   )
