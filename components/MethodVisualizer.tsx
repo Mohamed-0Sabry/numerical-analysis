@@ -100,13 +100,17 @@ export default function MethodVisualizer({ expr, method, data }: VisualizerProps
       return
     }
 
-    if (step >= iterations.length) {
+    const maxSteps = method === "fixed-point" 
+      ? (data?.summary?.cobwebPoints?.length ?? 0)
+      : iterations.length
+
+    if (step >= maxSteps) {
       setPlaying(false)
       return
     }
 
     playerRef.current = setTimeout(() => {
-      setStep((s) => Math.min(s + 1, iterations.length))
+      setStep((s) => Math.min(s + 1, maxSteps))
     }, speed)
 
     return () => {
@@ -115,7 +119,7 @@ export default function MethodVisualizer({ expr, method, data }: VisualizerProps
         playerRef.current = null
       }
     }
-  }, [playing, step, iterations.length, speed])
+  }, [playing, step, iterations.length, speed, method, data])
 
   // Reset when data changes
   useEffect(() => {
@@ -135,22 +139,35 @@ export default function MethodVisualizer({ expr, method, data }: VisualizerProps
   })
 
   // For fixed-point, extract cobweb points up to current step
-  const cobwebPoints = data?.summary?.cobwebPoints ?? []
-  const visibleCobwebPoints = cobwebPoints.slice(0, Math.min((step * 2) + 1, cobwebPoints.length))
+  interface CobwebPoint {
+    x: number;
+    y: number;
+  }
+  const cobwebPoints = (data?.summary?.cobwebPoints ?? []) as CobwebPoint[]
+  const visibleCobwebPoints = cobwebPoints.slice(0, step + 1)
+  
+  // Calculate which iteration we're on for fixed-point (each iteration has 2 cobweb segments)
+  const fixedPointIterNum = Math.floor(step / 2)
 
   // Control handlers
   const handlePlayPause = () => {
     if (playing) {
       setPlaying(false)
     } else {
-      if (step >= iterations.length) setStep(0)
+      const maxSteps = method === "fixed-point" 
+        ? cobwebPoints.length - 1
+        : iterations.length
+      if (step >= maxSteps) setStep(0)
       setPlaying(true)
     }
   }
 
   const handleStepForward = () => {
     setPlaying(false)
-    setStep((s) => Math.min(s + 1, iterations.length))
+    const maxSteps = method === "fixed-point" 
+      ? cobwebPoints.length - 1
+      : iterations.length
+    setStep((s) => Math.min(s + 1, maxSteps))
   }
 
   const handleStepBack = () => {
@@ -308,6 +325,10 @@ export default function MethodVisualizer({ expr, method, data }: VisualizerProps
     yMin + (i / (yTicks - 1)) * (yMax - yMin)
   )
 
+  const maxSteps = method === "fixed-point" 
+    ? cobwebPoints.length - 1
+    : iterations.length
+
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between gap-4">
@@ -324,7 +345,7 @@ export default function MethodVisualizer({ expr, method, data }: VisualizerProps
             <Button onClick={handleStepBack} size="sm" variant="outline" disabled={step === 0}>
               <SkipBack className="w-4 h-4" />
             </Button>
-            <Button onClick={handleStepForward} size="sm" variant="outline" disabled={step >= iterations.length}>
+            <Button onClick={handleStepForward} size="sm" variant="outline" disabled={step >= maxSteps}>
               <SkipForward className="w-4 h-4" />
             </Button>
             <Button onClick={handleReset} size="sm" variant="outline">
@@ -333,8 +354,9 @@ export default function MethodVisualizer({ expr, method, data }: VisualizerProps
           </div>
 
           <div className="flex items-center gap-3 min-w-[360px]">
-            <div className="ml-4 text-sm text-muted-foreground font-mono">
-              Step: <span className="font-semibold">{step}</span> / {iterations.length}
+            <div className="text-sm text-muted-foreground font-mono">
+              Step: <span className="font-semibold">{step}</span> / {maxSteps}
+              {method === "fixed-point" && ` (Iter: ${fixedPointIterNum})`}
             </div>
             <span className="text-sm text-muted-foreground whitespace-nowrap">Speed:</span>
             <Slider
@@ -491,10 +513,10 @@ export default function MethodVisualizer({ expr, method, data }: VisualizerProps
               />
             )}
 
-            {/* Fixed-Point: Draw cobweb diagram with animated arrows */}
+            {/* Fixed-Point: Draw cobweb diagram with step-by-step animation */}
             {method === "fixed-point" && visibleCobwebPoints.length > 1 && (
               <>
-                {visibleCobwebPoints.slice(0, -1).map((pt: { x: number; y: number }, i: number) => {
+                {visibleCobwebPoints.slice(0, -1).map((pt, i) => {
                   const nextPt = visibleCobwebPoints[i + 1]
                   if (!Number.isFinite(pt.x) || !Number.isFinite(pt.y) || 
                       !Number.isFinite(nextPt.x) || !Number.isFinite(nextPt.y)) {
@@ -505,17 +527,15 @@ export default function MethodVisualizer({ expr, method, data }: VisualizerProps
                   const color = isHorizontal ? "#f97316" : "#06b6d4"
 
                   return (
-                    <motion.line
+                    <line
                       key={`cobweb-${i}`}
-                      initial={{ pathLength: 0, opacity: 0 }}
-                      animate={{ pathLength: 1, opacity: 0.8 }}
-                      transition={{ duration: 0.3, ease: "easeOut" }}
                       x1={xScale(pt.x)}
                       y1={yScale(pt.y)}
                       x2={xScale(nextPt.x)}
                       y2={yScale(nextPt.y)}
                       stroke={color}
                       strokeWidth="2"
+                      opacity="0.8"
                       markerEnd={i === visibleCobwebPoints.length - 2 ? "url(#cobweb-arrow)" : undefined}
                     />
                   )

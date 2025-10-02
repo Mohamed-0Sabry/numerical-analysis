@@ -274,9 +274,17 @@ export function solveFixedPoint(
   let x = x0
   let converged = false
 
+  // Store cobweb points for visualization: [x, g(x), x, g(g(x)), ...]
+  const cobwebPoints: Array<{ x: number; y: number }> = []
+  cobwebPoints.push({ x: x0, y: x0 }) // Start at (x0, x0)
+
   for (let k = 0; k < maxIter; k++) {
     const xnext = evalf(gexpr, x)
     const diff = Math.abs(xnext - x)
+
+    // Add cobweb steps: horizontal to (x, g(x)), then vertical to (g(x), g(x))
+    cobwebPoints.push({ x: x, y: xnext })  // Horizontal to g(x)
+    cobwebPoints.push({ x: xnext, y: xnext })  // Vertical to diagonal
 
     iters.push({
       iter: k + 1,
@@ -304,7 +312,10 @@ export function solveFixedPoint(
     x = xnext
   }
 
-  const sampled = sampleFunction(gexpr, x0 - 5, x0 + 5)
+  // Sample g(x) for plotting
+  const plotMin = Math.min(x0 - 5, x - 5)
+  const plotMax = Math.max(x0 + 5, x + 5)
+  const sampled = sampleFunction(gexpr, plotMin, plotMax)
 
   return {
     iterations: iters,
@@ -312,7 +323,9 @@ export function solveFixedPoint(
       root: x,
       iterations: iters.length,
       converged,
-      plotRange: [x0 - 5, x0 + 5],
+      plotRange: [plotMin, plotMax],
+      cobwebPoints,  // Add cobweb data for visualization
+      gFunction: gexpr,
       ...sampled,
     },
   }
