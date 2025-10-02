@@ -4,35 +4,23 @@ import Link from "next/link";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Construction, Home, Rocket, Sparkles, Clock } from "lucide-react";
+import { useT } from "@/components/LanguageProvider";
 
 export default function NotFoundPage() {
+  const t = useT();
+
   return (
     <main className="min-h-screen flex flex-col items-center justify-center text-center px-6 bg-gradient-to-br from-background via-background to-muted/20 relative overflow-hidden">
       {/* Animated background elements */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <motion.div
-          animate={{
-            scale: [1, 1.2, 1],
-            opacity: [0.03, 0.06, 0.03],
-          }}
-          transition={{
-            duration: 8,
-            repeat: Infinity,
-            ease: "easeInOut",
-          }}
+          animate={{ scale: [1, 1.2, 1], opacity: [0.03, 0.06, 0.03] }}
+          transition={{ duration: 8, repeat: Infinity, ease: "easeInOut" }}
           className="absolute top-1/4 left-1/4 w-96 h-96 bg-primary/10 rounded-full blur-3xl"
         />
         <motion.div
-          animate={{
-            scale: [1, 1.3, 1],
-            opacity: [0.03, 0.06, 0.03],
-          }}
-          transition={{
-            duration: 10,
-            repeat: Infinity,
-            ease: "easeInOut",
-            delay: 1,
-          }}
+          animate={{ scale: [1, 1.3, 1], opacity: [0.03, 0.06, 0.03] }}
+          transition={{ duration: 10, repeat: Infinity, ease: "easeInOut", delay: 1 }}
           className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-yellow-500/10 rounded-full blur-3xl"
         />
       </div>
@@ -43,59 +31,41 @@ export default function NotFoundPage() {
         transition={{ duration: 0.8, ease: "easeOut" }}
         className="relative z-10 flex flex-col items-center gap-8 max-w-2xl"
       >
-        {/* Animated Icon Container */}
+        {/* Icon */}
         <motion.div
           initial={{ scale: 0.5, rotate: -10 }}
           animate={{ scale: 1, rotate: 0 }}
-          transition={{
-            duration: 0.6,
-            type: "spring",
-            stiffness: 200,
-          }}
+          transition={{ duration: 0.6, type: "spring", stiffness: 200 }}
           className="relative"
         >
           <motion.div
-            animate={{
-              rotate: [0, 5, -5, 0],
-            }}
-            transition={{
-              duration: 3,
-              repeat: Infinity,
-              ease: "easeInOut",
-            }}
+            animate={{ rotate: [0, 5, -5, 0] }}
+            transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
             className="w-28 h-28 rounded-3xl bg-gradient-to-br from-yellow-400/20 to-orange-500/20 backdrop-blur-sm flex items-center justify-center border border-yellow-500/20 shadow-2xl shadow-yellow-500/10"
           >
             <Construction className="w-14 h-14 text-yellow-600 dark:text-yellow-400" strokeWidth={2} />
           </motion.div>
-          
-          {/* Floating sparkles */}
+
+          {/* Sparkle */}
           <motion.div
-            animate={{
-              y: [-10, -20, -10],
-              opacity: [0.5, 1, 0.5],
-            }}
-            transition={{
-              duration: 2,
-              repeat: Infinity,
-              ease: "easeInOut",
-            }}
+            animate={{ y: [-10, -20, -10], opacity: [0.5, 1, 0.5] }}
+            transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
             className="absolute -top-2 -right-2"
           >
             <Sparkles className="w-6 h-6 text-yellow-500" />
           </motion.div>
         </motion.div>
 
-        {/* Text Content */}
+        {/* Text */}
         <div className="space-y-4">
-          <motion.div
+          <motion.h1
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2, duration: 0.6 }}
+            className="text-5xl sm:text-6xl font-bold bg-gradient-to-r from-foreground via-foreground to-muted-foreground bg-clip-text"
           >
-            <h1 className="text-5xl sm:text-6xl font-bold bg-gradient-to-r from-foreground via-foreground to-muted-foreground bg-clip-text text-transparent">
-              Almost There!
-            </h1>
-          </motion.div>
+            {t("notfound.title")}
+          </motion.h1>
 
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -104,10 +74,10 @@ export default function NotFoundPage() {
             className="space-y-2"
           >
             <p className="text-xl text-muted-foreground font-medium">
-              I'm crafting something special
+              {t("notfound.subtitle")}
             </p>
             <p className="text-base text-muted-foreground/80 max-w-lg mx-auto">
-              This page is currently under construction. I'm working hard to bring you an amazing experience.
+              {t("notfound.description")}
             </p>
           </motion.div>
 
@@ -119,11 +89,11 @@ export default function NotFoundPage() {
             className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-yellow-500/10 border border-yellow-500/20 text-yellow-700 dark:text-yellow-400"
           >
             <Clock className="w-4 h-4" />
-            <span className="text-sm font-medium">Coming Soon</span>
+            <span className="text-sm font-medium">{t("notfound.status")}</span>
           </motion.div>
         </div>
 
-        {/* Action Buttons */}
+        {/* Buttons */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -131,27 +101,24 @@ export default function NotFoundPage() {
           className="flex flex-col sm:flex-row gap-4 mt-4"
         >
           <Link href="/">
-            <Button 
-              size="lg" 
-              className="group gap-2 px-8 h-12 text-base font-medium shadow-lg hover:shadow-xl transition-all"
-            >
+            <Button size="lg" className="group gap-2 px-8 h-12 text-base font-medium shadow-lg hover:shadow-xl">
               <Home className="w-5 h-5 group-hover:scale-110 transition-transform" />
-              Back to Home
+              {t("notfound.backHome")}
             </Button>
           </Link>
           <Link href="/numerical-analysis">
-            <Button 
-              size="lg" 
-              variant="outline" 
+            <Button
+              size="lg"
+              variant="outline"
               className="group gap-2 px-8 h-12 text-base font-medium border-2 hover:bg-primary/5"
             >
               <Rocket className="w-5 h-5 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
-              Explore the Tool
+              {t("notfound.explore")}
             </Button>
           </Link>
         </motion.div>
 
-        {/* Optional: Progress indicator */}
+        {/* Progress */}
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -167,7 +134,7 @@ export default function NotFoundPage() {
             />
           </div>
           <p className="text-xs text-muted-foreground mt-2">
-            Development Progress: 65%
+            {t("notfound.progress", { value: 65 })}
           </p>
         </motion.div>
       </motion.div>
