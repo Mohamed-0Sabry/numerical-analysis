@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
+import Script from "next/script";
+import { ThemeProvider } from "@/components/ThemeProvider";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -29,14 +31,19 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased flex flex-col min-h-screen`}
       >
-        {/* Main Content */}
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="system"
+          enableSystem
+          storageKey="na-theme"
+        >
+
         <main className="flex-1">{children}</main>
 
-        {/* Footer */}
         <footer className="border-t bg-card/50 backdrop-blur-sm py-4 text-center text-lg">
           © {new Date().getFullYear()} Sabry — Created with ❤️ so you can solve with ease.
         </footer>
-
+        </ThemeProvider>
         <Analytics />
       </body>
     </html>
